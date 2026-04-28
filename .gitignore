@@ -1,0 +1,24 @@
+# dependencies
+node_modules/
+
+# production build
+dist/
+
+# environment variables (contains Firebase keys!)
+.env
+.env.local
+.env.production
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
