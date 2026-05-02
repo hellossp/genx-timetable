@@ -1,4 +1,4 @@
-import { DAYS, PERIODS } from './constants';
+import { DAYS } from './constants';
 
 /**
  * Timetable Generation Algorithm
@@ -6,12 +6,13 @@ import { DAYS, PERIODS } from './constants';
  * 
  * @param {Object} params
  * @param {Array} params.subjects - [{id, name, periodsPerWeek}]
- * @param {Array} params.teachers - [{id, name, subjects: [subjectId], availability: {day: [periods]}}]
+ * @param {Array} params.teachers - [{id, name, subjects: [subjectId], classIds: [classId], availability: {day: [periods]}}]
+ * @param {string} params.classId - The class ID to generate timetable for (used to filter teachers)
  * @param {Array} params.days - Days to schedule (e.g. ['Monday', 'Tuesday', ...])
  * @param {Object} params.existingBookings - { "day-period": teacherId } global bookings across ALL sections
  * @returns {Object} { schedule: {day: {period: {teacherId, teacherName, subjectId, subjectName}}}, conflicts: [] }
  */
-export function generateTimetable({ subjects, teachers, days, existingBookings = {} }) {
+export function generateTimetable({ subjects, teachers, days, classId, existingBookings = {}, dailyAvailability = {}, numPeriods = 6 }) {
   const schedule = {};
   const conflicts = [];
   
@@ -24,10 +25,12 @@ export function generateTimetable({ subjects, teachers, days, existingBookings =
   // Track teacher bookings for this timetable (to avoid double-booking within this section)
   const localBookings = { ...existingBookings };
 
+  const periodsArray = Array.from({ length: numPeriods }, (_, i) => i + 1);
+
   // Create slots: [{day, period}]
   const slots = [];
   days.forEach(day => {
-    PERIODS.forEach(period => {
+    periodsArray.forEach(period => {
       slots.push({ day, period });
     });
   });
@@ -41,7 +44,7 @@ export function generateTimetable({ subjects, teachers, days, existingBookings =
   // Initialize schedule
   days.forEach(day => {
     schedule[day] = {};
-    PERIODS.forEach(period => {
+    periodsArray.forEach(period => {
       schedule[day][period] = null;
     });
   });
@@ -49,15 +52,16 @@ export function generateTimetable({ subjects, teachers, days, existingBookings =
   // Greedy assignment
   for (const subject of sortedSubjects) {
     let assigned = 0;
-    const target = Math.min(subject.periodsPerWeek, days.length * PERIODS.length);
+    const target = Math.min(subject.periodsPerWeek, days.length * numPeriods);
 
-    // Find eligible teachers for this subject
+    // Find eligible teachers for this subject AND assigned to this class
     const eligibleTeachers = teachers.filter(t =>
-      t.subjects && t.subjects.includes(subject.id)
+      t.subjects && t.subjects.includes(subject.id) &&
+      (!classId || (t.classIds && t.classIds.includes(classId)))
     );
 
     if (eligibleTeachers.length === 0) {
-      conflicts.push(`No teacher available for "${subject.name}"`);
+      conflicts.push(`No teacher assigned to this class for "${subject.name}". Check teacher class assignments.`);
       continue;
     }
 
@@ -82,8 +86,14 @@ export function generateTimetable({ subjects, teachers, days, existingBookings =
       for (const teacher of eligibleTeachers) {
         const bookingKey = `${slot.day}-${slot.period}`;
 
-        // Check teacher availability
-        const teacherAvail = teacher.availability?.[slot.day] || [];
+        // Check dynamic daily availability if provided
+        let teacherAvail = [];
+        if (dailyAvailability[teacher.id]) {
+          teacherAvail = dailyAvailability[teacher.id];
+        } else {
+          // If no mapping passed, assume available for all periods
+          teacherAvail = periodsArray;
+        }
         if (!teacherAvail.includes(slot.period)) continue;
 
         // Check if teacher is already booked elsewhere in this period
@@ -114,7 +124,7 @@ export function generateTimetable({ subjects, teachers, days, existingBookings =
 
   // Check for empty slots
   days.forEach(day => {
-    PERIODS.forEach(period => {
+    periodsArray.forEach(period => {
       if (!schedule[day][period]) {
         schedule[day][period] = {
           teacherId: null,
@@ -132,26 +142,19 @@ export function generateTimetable({ subjects, teachers, days, existingBookings =
 /**
  * Generate timetable for a single day
  */
-export function generateDailyTimetable({ subjects, teachers, day, existingBookings = {} }) {
+export function generateDailyTimetable({ subjects, teachers, day, classId, existingBookings = {}, dailyAvailability = {}, numPeriods = 6 }) {
   return generateTimetable({
     subjects,
     teachers,
     days: [day],
+    classId,
     existingBookings,
+    dailyAvailability,
+    numPeriods,
   });
 }
 
-/**
- * Generate timetable for a full week
- */
-export function generateWeeklyTimetable({ subjects, teachers, existingBookings = {} }) {
-  return generateTimetable({
-    subjects,
-    teachers,
-    days: DAYS,
-    existingBookings,
-  });
-}
+
 
 /**
  * Collect all teacher bookings across all existing timetables for conflict detection

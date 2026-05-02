@@ -4,10 +4,12 @@ import {
   HiOutlineCalendar,
   HiOutlineTrash,
   HiOutlinePrinter,
+  HiOutlineDocumentDuplicate,
 } from 'react-icons/hi';
+import { formatTimetableAsText } from '../utils/helpers';
 import { timetableService } from '../services/timetableService';
 import { classService } from '../services/classService';
-import { PERIODS, PERIOD_LABELS } from '../utils/constants';
+import { PERIOD_LABELS } from '../utils/constants';
 import { getSubjectColor } from '../utils/constants';
 
 import ConfirmDialog from '../components/ui/ConfirmDialog';
@@ -24,7 +26,6 @@ const ViewTimetable = () => {
 
   // Filters
   const [filterClass, setFilterClass] = useState('');
-  const [filterType, setFilterType] = useState('');
 
   useEffect(() => { loadData(); }, []);
 
@@ -61,7 +62,6 @@ const ViewTimetable = () => {
 
   const filteredTimetables = timetables.filter(tt => {
     if (filterClass && tt.classId !== filterClass) return false;
-    if (filterType && tt.type !== filterType) return false;
     return true;
   });
 
@@ -89,9 +89,21 @@ const ViewTimetable = () => {
           <p className="page-subtitle">Browse and print saved schedules</p>
         </div>
         {selectedTimetable && (
-          <button onClick={handlePrint} className="btn-secondary flex items-center gap-2 no-print">
-            <HiOutlinePrinter className="w-5 h-5" /> Print
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                const text = formatTimetableAsText(selectedTimetable);
+                navigator.clipboard.writeText(text);
+                toast.success('Copied to clipboard!');
+              }}
+              className="btn-secondary flex items-center gap-2 no-print"
+            >
+              <HiOutlineDocumentDuplicate className="w-5 h-5" /> Copy as Text
+            </button>
+            <button onClick={handlePrint} className="btn-secondary flex items-center gap-2 no-print">
+              <HiOutlinePrinter className="w-5 h-5" /> Print
+            </button>
+          </div>
         )}
       </div>
 
@@ -104,12 +116,6 @@ const ViewTimetable = () => {
               onChange={e => setFilterClass(e.target.value)}>
               <option value="">All Classes</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <select className="select-field text-sm" value={filterType}
-              onChange={e => setFilterType(e.target.value)}>
-              <option value="">All Types</option>
-              <option value="weekly">Weekly</option>
-              <option value="daily">Daily</option>
             </select>
           </div>
 
@@ -134,17 +140,15 @@ const ViewTimetable = () => {
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`badge ${tt.type === 'weekly' ? 'badge-primary' : 'badge-success'}`}>
-                          {tt.type}
+                        <span className="badge badge-success">
+                          Daily
                         </span>
                       </div>
                       <p className="font-semibold text-dark-900 text-sm">
                         {tt.className} — {tt.sectionName}
                       </p>
                       <p className="text-xs text-dark-400 mt-0.5">
-                        {tt.type === 'weekly'
-                          ? `Week of ${tt.weekStartDate}`
-                          : `${tt.dayName || ''} ${tt.date}`}
+                        {`${tt.dayName || ''} ${tt.date}`}
                       </p>
                       <p className="text-xs text-dark-400">Created: {tt.createdAt ? new Date(tt.createdAt).toLocaleDateString() : ''}</p>
                     </div>
@@ -176,9 +180,7 @@ const ViewTimetable = () => {
                   {selectedTimetable.className} — {selectedTimetable.sectionName}
                 </h2>
                 <p className="text-sm mt-0.5 text-white/80">
-                  {selectedTimetable.type === 'weekly'
-                    ? `Weekly Schedule — Week of ${selectedTimetable.weekStartDate}`
-                    : `Daily Schedule — ${selectedTimetable.dayName || ''} ${selectedTimetable.date}`}
+                  {`Daily Schedule — ${selectedTimetable.dayName || ''} ${selectedTimetable.date}`}
                 </p>
               </div>
 
@@ -187,16 +189,20 @@ const ViewTimetable = () => {
                   const schedule = selectedTimetable.schedule;
                   const colorMap = getSubjectColorMap(schedule);
                   const days = Object.keys(schedule || {});
+                  const numPeriods = selectedTimetable.numPeriods || 6;
+                  const periodsArray = Array.from({ length: numPeriods }, (_, i) => i + 1);
 
                   return (
                     <table className="w-full border-collapse">
                       <thead>
                         <tr>
                           <th className="timetable-header">Day / Period</th>
-                          {PERIODS.map(p => (
+                          {periodsArray.map(p => (
                             <th key={p} className="timetable-header">
                               <div>Period {p}</div>
-                              <div className="text-[10px] font-normal opacity-70">{PERIOD_LABELS[p]}</div>
+                              <div className="text-[10px] font-normal opacity-70">
+                                {selectedTimetable.timings?.[p] || PERIOD_LABELS[p]}
+                              </div>
                             </th>
                           ))}
                         </tr>
@@ -205,7 +211,7 @@ const ViewTimetable = () => {
                         {days.map(day => (
                           <tr key={day}>
                             <td className="timetable-header text-left">{day}</td>
-                            {PERIODS.map(period => {
+                            {periodsArray.map(period => {
                               const slot = schedule[day]?.[period];
                               const color = slot?.subjectId ? colorMap[slot.subjectId] : null;
 
